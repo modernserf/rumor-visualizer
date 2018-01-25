@@ -76,7 +76,7 @@ const ConnectionStatus = styled(({ connected, ...props }) => connected ? null : 
     padding: 2em;
 `
 
-const addIDs = (match, i) => ({ ...match, type: match.type.str, _id: i })
+const addIDs = (match, i) => ({ ...match, type: match.type && match.type.str, _id: i })
 
 const APP_STATE = '@modernserf/rumor-visualizer/v2'
 
@@ -106,14 +106,24 @@ class App extends Component {
         const { assertion, query } = this.state
         return { assertion, query }
     }
+    async fetchAll () {
+        const queries = this.state.query.split('\n')
+        const solutionGroups = await Promise.all(queries.map((query) =>
+            this.room.select(query)._db().then(({ solutions }) => solutions)))
+
+        return solutionGroups.reduce((allSolutions, solnsForQuery) =>
+            allSolutions.concat(solnsForQuery), [])
+    }
     updateFigures = () => {
         window.localStorage.setItem(APP_STATE, JSON.stringify(this.getSavedState()))
-        this.room
-            .select(this.state.query)
-            .doAll((matches) => this.setState({ figures: matches.map(addIDs) }))
-            .then(() => {
+        this.fetchAll()
+            .then((matches) => {
+                this.setState({
+                    figures: matches.map(addIDs),
+                    connected: true,
+                    timeout: 1000,
+                })
                 this.timeout = setTimeout(this.updateFigures, this.state.timeout)
-                this.setState({ connected: true, timeout: 1000 })
             }, () => {
                 this.setState({ connected: false, timeout: this.state.timeout * 2 })
             })
