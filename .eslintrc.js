@@ -14,6 +14,7 @@ module.exports = {
         "comma-dangle": ["error", "always-multiline"],
         "react/prop-types": ["off"],
         "object-curly-spacing": ["error", "always"],
+        "react/display-name": ["off"],
     },
     "env": {
         "jest/globals": true
