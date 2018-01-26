@@ -23,7 +23,7 @@
     "eslint-plugin-standard": "^3.0.1"
 },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "REACT_APP_ROOM_URL=http://crosby.cluster.recurse.com:3000 react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject"

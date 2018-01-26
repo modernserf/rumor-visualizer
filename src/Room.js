@@ -25,7 +25,14 @@ export default class Room {
                 this._data = null
                 this._endpoint = null
                 return json
+            }).catch((err) => {
+                console.error(err)
             })
+    }
+
+    facts () {
+        this._endpoint = 'facts'
+        return this
     }
 
     select (...facts) {
