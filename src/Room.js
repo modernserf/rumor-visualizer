@@ -1,3 +1,103 @@
+import RoomDB from 'roomdb'
+import socketIO from 'socket.io-client'
+
+// TODO: make this async to match remote API?
+// Or just expect consumer to use async/await?
+export class LocalRoom {
+    constructor () {
+        this._client = new RoomDB().connect()
+        this._subscriptions = []
+    }
+    facts () {
+        return this._client.facts
+    }
+    assert (fact) {
+        this._client.assert(fact)
+        this._updateSubscriptions()
+    }
+    retract (fact) {
+        this._client.retract(fact)
+        this._updateSubscriptions()
+    }
+    select (...queries) {
+        return this._client.select(...queries)
+    }
+    subscribe () {
+        const sub = { queries: null, listeners: [] }
+        this._subscriptions.push(sub)
+        const index = this._subscriptions.length
+        return {
+            select: (...qs) => {
+                sub.queries = qs
+                this._updateSubscriptions()
+            },
+            addListener: (cb) => {
+                sub.listeners.push(cb)
+            },
+            unsubscribe: () => {
+                this._subscriptions.splice(index, 1)
+            },
+        }
+    }
+    _updateSubscriptions () {
+        this._subscriptions.forEach(({ queries, listeners }) => {
+            listeners.forEach((onChange) => onChange(this.select(...queries)))
+        })
+    }
+}
+
+export class RemoteRoom {
+    constructor (uri, id) {
+        this.uri = uri
+        this.id = id
+    }
+    facts () {
+        return this._postHTTP('facts')
+    }
+    assert (fact) {
+        return this._postHTTP('assert', { fact })
+    }
+    retract (fact) {
+        return this._postHTTP('retract', { fact })
+    }
+    select (...queries) {
+        const req = this._postHTTP('select', { facts: queries })
+
+        req.do = (next) => req.then(({ solutions }) => solutions.forEach(next))
+        req.doAll = (next) => req.then(({ solutions }) => next(solutions))
+
+        return req
+    }
+    subscribe () {
+        const socket = socketIO(this.uri)
+        return {
+            select: (...qs) => {
+                socket.emit('select', qs)
+            },
+            addListener: (cb) => {
+                socket.on('solutions', cb)
+            },
+            unsubscribe: () => {
+                socket.disconnect()
+            },
+        }
+    }
+    async _postHTTP (endpoint, data = {}) {
+        const uri = `${this.uri}/${endpoint}`
+
+        const post = {
+            method: 'POST',
+            body: JSON.stringify({ id: this.id, ...data }),
+            headers: { 'Content-Type': 'application/json' },
+        }
+
+        const res = await window.fetch(uri, post)
+        const json = await res.json()
+        this.id = this.id || json.id
+        return json
+    }
+}
+
 export default class Room {
     constructor (uri) {
         this.uri = uri
