@@ -1,6 +1,7 @@
 import React, { Component } from 'react'
 import styled from 'styled-components'
-import Room from './Room'
+import debounce from 'lodash/debounce'
+import { LocalRoom } from './Room'
 import Canvas from './CanvasRenderer'
 
 const Container = styled.div`
@@ -57,8 +58,6 @@ const addIDs = (value, i) => ({
     ...mapValues(value, unstr),
 })
 
-const APP_STATE = '@modernserf/rumor-visualizer/v2'
-
 class App extends Component {
     constructor () {
         super()
@@ -72,15 +71,10 @@ class App extends Component {
             height: 500,
             sidebar: { 'top': 0, 'right': 0 },
         }
-
-        if (window.localStorage.getItem(APP_STATE)) {
-            Object.assign(this.state, JSON.parse(window.localStorage.getItem(APP_STATE)))
-        }
     }
     componentDidMount () {
-        this.room = new Room(process.env.REACT_APP_ROOM_URL)
-        this.updateSlowData()
-        this.updateFigures()
+        this.room = new LocalRoom()
+        this.initSubscriptions()
         this.annoyingLoop()
     }
     componentWillUnmount () {
@@ -99,42 +93,38 @@ class App extends Component {
         this.room.assert(`shape circle with color blue and radius 25 at (${x + 100}, ${y2 + 300})`)
         window.setTimeout(this.annoyingLoop, 50)
     }
-    async fetchFacts () {
-        return this.room.facts()._db().then((facts) => console.log(facts) || facts)
-    }
-    async fetchAll () {
-        const queries = this.state.query.split('\n')
-        const solutionGroups = await Promise.all(queries.map((query) =>
-            this.room.select(query)._db().then(({ solutions }) => solutions)))
+    initSubscriptions = () => {
+        this.room.subscribe()
+            .select('the whiteboard is $width by $height')
+            .addListener((selector) => selector.do(({ width, height }) => {
+                this.setState({ width, height })
+            }))
 
-        return solutionGroups.reduce((allSolutions, solnsForQuery) =>
-            allSolutions.concat(solnsForQuery), [])
-    }
-    updateSlowData = () => {
-        window.localStorage.setItem(APP_STATE, JSON.stringify(this.getSavedState()))
+        this.room.subscribe()
+            .select('the sidebar is at $yval $ypos $xval $xpos')
+            .addListener((selector) => selector.do(({ yval, ypos, xval, xpos }) => {
+                this.setState({
+                    sidebar: { [yval.str]: ypos, [xval.str]: xpos },
+                    connected: true,
+                    timeout: 5000,
+                })
+            }))
 
-        this.room.select('the whiteboard is $width by $height').do(({ width, height }) => {
-            this.setState({ width, height })
-        })
-        this.room.select('the sidebar is at $yval $ypos $xval $xpos').do(({ yval, ypos, xval, xpos }) => {
-            this.setState({
-                sidebar: { [yval.str]: ypos, [xval.str]: xpos },
-                connected: true,
-                timeout: 5000,
-            })
-        }).catch(() => {
-            this.setState({ connected: false, timeout: this.state.timeout * 2 })
-        })
-        this.timeout = setTimeout(this.updateSlowData, this.state.timeout)
-    }
-    updateFigures = () => {
-        this.fetchAll().then((matches) => {
-            this.setState({ figures: matches.map(addIDs) })
-            window.requestAnimationFrame(this.updateFigures)
-        })
+        this.mainSubscription = this.room.subscribe()
+            .addListener((selector) => selector.doAll((solutions) => {
+                this.setState({ figures: solutions.map(addIDs) })
+            }))
+        this.updateMainQuery(this.state.query)
     }
     getAssertions () {
         return this.state.assertion.split('\n')
+    }
+    updateMainQuery = debounce((query) => {
+        this.mainSubscription.select(...query.split('\n').filter((x) => x.trim()))
+    }, 3000)
+    onSetMainQuery = (query) => {
+        this.setState({ query })
+        this.updateMainQuery(query)
     }
     onAssert = () => {
         this.getAssertions().map(x => this.room.assert(x))
@@ -155,7 +145,7 @@ class App extends Component {
                         <label>Queries</label>
                         <textarea
                             value={this.state.query}
-                            onChange={(e) => this.setState({ query: e.target.value })}
+                            onChange={(e) => this.onSetMainQuery(e.target.value)}
                         />
                     </Field>
                     <Field>

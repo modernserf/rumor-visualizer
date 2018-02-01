@@ -2,7 +2,8 @@ import RoomDB from 'roomdb'
 import socketIO from 'socket.io-client'
 
 // TODO: make this async to match remote API?
-// Or just expect consumer to use async/await?
+// Or just expect consumer to use await / Promise.resolve
+// if they're using them interchangeably?
 export class LocalRoom {
     constructor () {
         this._client = new RoomDB().connect()
@@ -23,21 +24,25 @@ export class LocalRoom {
         return this._client.select(...queries)
     }
     subscribe () {
-        const sub = { queries: null, listeners: [] }
+        const sub = { queries: [], listeners: [] }
         this._subscriptions.push(sub)
         const index = this._subscriptions.length
-        return {
+        const handler = {
             select: (...qs) => {
                 sub.queries = qs
                 this._updateSubscriptions()
+                return handler
             },
             addListener: (cb) => {
                 sub.listeners.push(cb)
+                return handler
             },
             unsubscribe: () => {
                 this._subscriptions.splice(index, 1)
+                return null
             },
         }
+        return handler
     }
     _updateSubscriptions () {
         this._subscriptions.forEach(({ queries, listeners }) => {
@@ -63,8 +68,14 @@ export class RemoteRoom {
     select (...queries) {
         const req = this._postHTTP('select', { facts: queries })
 
-        req.do = (next) => req.then(({ solutions }) => solutions.forEach(next))
-        req.doAll = (next) => req.then(({ solutions }) => next(solutions))
+        req.do = (next) => {
+            req.then(({ solutions }) => solutions.forEach(next))
+            return req
+        }
+        req.doAll = (next) => {
+            req.then(({ solutions }) => next(solutions))
+            return req
+        }
 
         return req
     }
