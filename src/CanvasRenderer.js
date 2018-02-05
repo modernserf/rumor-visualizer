@@ -8,6 +8,14 @@ const canvasHandlers = {
         ctx.closePath()
         ctx.fill()
     },
+    line: (ctx, { stroke, x1, x2, y1, y2 }) => {
+        ctx.strokeStyle = stroke
+        ctx.beginPath()
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x2, y2)
+        ctx.closePath()
+        ctx.stroke()
+    },
 }
 
 export default class CanvasRenderer extends Component {
